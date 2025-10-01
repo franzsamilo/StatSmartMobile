@@ -1,98 +1,165 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { LinearGradient } from "expo-linear-gradient";
+import { StyleSheet, View, Text, Pressable, Image } from "react-native";
+import React from "react";
+import { MotiView } from "moti";
+import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function HomeScreen() {
+  const router = useRouter();
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
+    <LinearGradient
+      colors={["#061428", "#0a1e3b", "#061428"]}
+      style={styles.container}
+    >
+      <View style={styles.center}>
+        <MotiView
+          from={{ opacity: 0, translateY: 12 }}
+          animate={{ opacity: 1, translateY: 0 }}
+          transition={{ duration: 600 }}
+        >
+          <View style={styles.brandRow}>
+            <Image
+              source={require("@/assets/images/icon_copy.png")}
+              style={{ width: 64, height: 64, marginRight: 8 }}
             />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+            <Text style={styles.brand}>StatSmart</Text>
+          </View>
+        </MotiView>
+        <MotiView
+          from={{ opacity: 0, translateY: 8 }}
+          animate={{ opacity: 1, translateY: 0 }}
+          transition={{ delay: 150, duration: 500 }}
+        >
+          <Text style={styles.tagline}>Upload. Analyze. Learn.</Text>
+        </MotiView>
+        <MotiView
+          from={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 300, duration: 500 }}
+        >
+          <Pressable
+            style={styles.cta}
+            onPress={() => router.push("/upload")}
+            accessibilityLabel="Get started"
+          >
+            <Text style={styles.ctaText}>Get Started</Text>
+          </Pressable>
+        </MotiView>
+        <MotiView
+          from={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 450, duration: 500 }}
+        >
+          <Pressable
+            style={[
+              styles.cta,
+              {
+                backgroundColor: "transparent",
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.25)",
+                marginTop: 10,
+              },
+            ]}
+            onPress={async () => {
+              const raw = await AsyncStorage.getItem("statsmart:analysis");
+              if (!raw) return;
+              try {
+                JSON.parse(raw);
+                router.push("/results");
+              } catch {}
+            }}
+            accessibilityLabel="View last analysis"
+          >
+            <Text style={[styles.ctaText, { color: "white" }]}>
+              View last analysis
+            </Text>
+          </Pressable>
+        </MotiView>
+        <MotiView
+          from={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 600, duration: 500 }}
+        >
+          <RecentList />
+        </MotiView>
+      </View>
+    </LinearGradient>
+  );
+}
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+function RecentList() {
+  const router = useRouter();
+  const [items, setItems] = React.useState<
+    Array<{
+      id: string;
+      at: number;
+      recommendedTest?: string;
+      variablesCount?: number;
+    }>
+  >([]);
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem("statsmart:recent");
+        const list = raw ? (JSON.parse(raw) as any[]) : [];
+        setItems(list);
+      } catch {}
+    })();
+  }, []);
+  if (!items.length) return null;
+  return (
+    <View style={{ marginTop: 18, width: "100%", maxWidth: 520 }}>
+      <Text style={{ color: "white", fontWeight: "700", marginBottom: 8 }}>
+        Recent analyses
+      </Text>
+      {items.map((it) => (
+        <Pressable
+          key={it.id}
+          onPress={() => router.push("/results")}
+          style={{
+            backgroundColor: "rgba(255,255,255,0.06)",
+            borderColor: "rgba(255,255,255,0.12)",
+            borderWidth: 1,
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 6,
+          }}
+        >
+          <Text style={{ color: "rgba(255,255,255,0.9)" }} numberOfLines={1}>
+            {it.recommendedTest || "Analysis"}
+          </Text>
+          <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
+            {it.variablesCount || 0} variables •{" "}
+            {new Date(it.at).toLocaleString()}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: { flex: 1 },
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  brand: { fontSize: 48, fontWeight: "700", color: "white" },
+  tagline: { marginTop: 8, color: "rgba(255,255,255,0.85)", fontSize: 16 },
+  cta: {
+    marginTop: 18,
+    backgroundColor: "#22d3ee",
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
   },
+  ctaText: { color: "#06203d", fontWeight: "600" },
 });
