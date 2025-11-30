@@ -205,19 +205,19 @@ export default function ResultsScreen() {
             <Text style={styles.ctaText}>Share</Text>
           </Pressable>
           <Pressable
-            onPress={() => setShowQuizDialog(true)}
+            onPress={() => router.push("/quiz")}
             style={styles.cta}
             accessibilityLabel="Proceed to quiz"
+            onPressIn={async () => {
+              try {
+                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              } catch {}
+            }}
           >
             <Text style={styles.ctaText}>Proceed to quiz</Text>
           </Pressable>
         </View>
-        <FeatureDialog
-          visible={showQuizDialog}
-          title="Feature to be implemented"
-          message="The quiz experience is coming soon. For now, explore the analysis above."
-          onClose={() => setShowQuizDialog(false)}
-        />
+        {/* Quiz dialog removed: we now navigate to quiz */}
         <View style={{ height: 8 }} />
       </ScrollView>
     </SafeAreaView>

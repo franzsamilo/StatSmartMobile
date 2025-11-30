@@ -15,28 +15,31 @@ export const unstable_settings = {
   anchor: "(tabs)",
 };
 
+// Create a proper component for headerLeft to satisfy React Hooks rules
+function HeaderBackButton() {
+  const router = useRouter();
+  return (
+    <Pressable
+      onPress={() => router.back()}
+      style={{
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        marginLeft: 8,
+        borderRadius: 999,
+        backgroundColor: "#0a1e3b",
+      }}
+    >
+      <Text style={{ color: "#22d3ee", fontWeight: "700" }}>Back</Text>
+    </Pressable>
+  );
+}
+
 const brandHeader = {
   headerStyle: { backgroundColor: "#061428" },
   headerTintColor: "#ffffff",
   headerTitleStyle: { fontWeight: "600" as const },
   headerBackTitleVisible: false,
-  headerLeft: () => {
-    const router = useRouter();
-    return (
-      <Pressable
-        onPress={() => router.back()}
-        style={{
-          paddingHorizontal: 14,
-          paddingVertical: 8,
-          marginLeft: 8,
-          borderRadius: 999,
-          backgroundColor: "#0a1e3b",
-        }}
-      >
-        <Text style={{ color: "#22d3ee", fontWeight: "700" }}>Back</Text>
-      </Pressable>
-    );
-  },
+  headerLeft: () => <HeaderBackButton />,
   headerTitleAlign: "center" as const,
   headerTitle: ({ children }: { children: React.ReactNode }) => (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -68,7 +71,7 @@ export default function RootLayout() {
           name="results"
           options={{ title: "Results", animation: "fade" }}
         />
-        <Stack.Screen name="quiz" options={{ title: "Quiz" }} />
+        <Stack.Screen name="quiz" options={{ headerShown: false }} />
         <Stack.Screen
           name="modal"
           options={{ presentation: "modal", title: "Modal" }}

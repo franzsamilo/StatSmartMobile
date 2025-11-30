@@ -8,18 +8,18 @@ import {
   Alert,
   StyleSheet,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { analyzeFiles } from "@/app/lib/api";
+import { uploadToBlob, analyzeFromUrls } from "@/app/lib/api";
 
 const ACCEPTED = new Set([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 ]);
 const MAX_FILES = 3;
-const MAX_SIZE_BYTES = 4 * 1024 * 1024;
+const MAX_BYTES = 50 * 1024 * 1024;
 
 export default function UploadScreen() {
   const router = useRouter();
@@ -46,11 +46,11 @@ export default function UploadScreen() {
         const name = a.name ?? "file";
         const type = inferMime(name, a.mimeType);
         if (!ACCEPTED.has(type)) {
-          setError("Only .pdf, .docx, or .xlsx files are allowed.");
+          setError("Only .pdf and .docx files are allowed.");
           return;
         }
-        if (a.size && a.size > MAX_SIZE_BYTES) {
-          setError("Each file must be ≤ 4 MB.");
+        if (a.size && a.size > MAX_BYTES) {
+          setError("Each file must be ≤ 50 MB.");
           return;
         }
         files.push({ uri: a.uri, name, type, size: a.size });
@@ -71,37 +71,19 @@ export default function UploadScreen() {
     if (selected.length === 0) return;
     setBusy(true);
     try {
-      const result = await analyzeFiles(
-        selected.map(({ uri, name, type }) => ({ uri, name, type }))
-      );
-      await AsyncStorage.setItem(
-        "statsmart:analysis",
-        JSON.stringify({
-          sessionId: result.sessionId,
-          analysis: result.analysis,
-        })
-      );
-      // Save to recent (keep last 3)
-      try {
-        const a: any = result.analysis as any;
-        const rec = {
-          id: result.sessionId,
-          at: Date.now(),
-          recommendedTest: a?.recommendedTest ?? "",
-          variablesCount: Array.isArray(a?.variables) ? a.variables.length : 0,
-          analysis: a,
-        };
-        const rawRecent = await AsyncStorage.getItem("statsmart:recent");
-        const recent = rawRecent ? (JSON.parse(rawRecent) as any[]) : [];
-        const next = [rec, ...recent.filter((r) => r?.id !== rec.id)].slice(
-          0,
-          3
-        );
-        await AsyncStorage.setItem("statsmart:recent", JSON.stringify(next));
-      } catch {}
+      // Upload all files to blob storage
+      const urls: string[] = [];
+      for (const f of selected) {
+        const url = await uploadToBlob(f);
+        urls.push(url);
+      }
+
+      // Store URLs in AsyncStorage for processing page
+      await AsyncStorage.setItem("statsmart:pendingUrls", JSON.stringify(urls));
+
+      // Navigate to processing page (no sid param needed)
       router.replace({
         pathname: "/processing",
-        params: { sid: result.sessionId },
       });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Upload failed";
@@ -116,9 +98,13 @@ export default function UploadScreen() {
 
   return (
     <View style={styles.container}>
+      <Image
+        source={require("@/assets/images/icon_copy.png")}
+        style={{ width: 120, height: 120, marginBottom: 6 }}
+      />
       <Text style={styles.title}>Upload your file</Text>
       <Text style={styles.subtitle}>
-        PDF, DOCX, or XLSX • Up to 3 files • 4 MB each
+        PDF or DOCX • Up to 3 files • Max 50 MB each
       </Text>
 
       {error && (
@@ -207,9 +193,6 @@ export default function UploadScreen() {
           </View>
         </View>
       )}
-      <Text style={styles.privacyNote}>
-        We don’t store your files. Temporary analysis only.
-      </Text>
     </View>
   );
 }
@@ -218,8 +201,6 @@ function inferMime(name: string, fallback?: string | null): string {
   if (name.endsWith(".pdf")) return "application/pdf";
   if (name.endsWith(".docx"))
     return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  if (name.endsWith(".xlsx"))
-    return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   return fallback || "application/octet-stream";
 }
 
@@ -229,7 +210,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#061428",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 24,
+    paddingHorizontal: 12,
   },
   title: {
     fontSize: 22,

@@ -1,14 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { View, Text, Image, StyleSheet } from "react-native";
 import { MotiView } from "moti";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { analyzeFromUrls } from "@/app/lib/api";
 
 export default function ProcessingScreen() {
-  const { sid } = useLocalSearchParams<{ sid?: string }>();
   const router = useRouter();
   const startedAtRef = useRef<number>(Date.now());
   const MIN_DISPLAY_MS = 12000;
   const [showFinalBrand, setShowFinalBrand] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const BRAND_ICON_MS = 2000;
+  const BRAND_POWERED_MS = 2000;
+  const BRAND_FINAL_MS = 4000;
+  const BRAND_TOTAL_MS = BRAND_ICON_MS + BRAND_POWERED_MS + BRAND_FINAL_MS; // 8000ms
   const steps = [
     "Preparing files for secure analysis",
     "Validating types and sizes",
@@ -21,30 +27,90 @@ export default function ProcessingScreen() {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    const remaining = Math.max(
-      0,
-      MIN_DISPLAY_MS - (Date.now() - startedAtRef.current)
-    );
-    const stepTimer = setInterval(() => {
+    let stepTimer: ReturnType<typeof setInterval>;
+    let progTimer: ReturnType<typeof setInterval>;
+    let timeout: ReturnType<typeof setTimeout>;
+
+    const processAnalysis = async () => {
+      try {
+        // Read URLs from AsyncStorage
+        const urlsJson = await AsyncStorage.getItem("statsmart:pendingUrls");
+        if (!urlsJson) {
+          setError("No files to analyze");
+          return;
+        }
+
+        const urls: string[] = JSON.parse(urlsJson);
+
+        // Call analyze API
+        const result = await analyzeFromUrls(urls);
+
+        // Store result
+        await AsyncStorage.setItem(
+          "statsmart:analysis",
+          JSON.stringify({
+            sessionId: result.sessionId,
+            analysis: result.analysis,
+          })
+        );
+
+        // Save to recent (keep last 3)
+        try {
+          const a: any = result.analysis as any;
+          const rec = {
+            id: result.sessionId,
+            at: Date.now(),
+            recommendedTest: a?.recommendedTest ?? "",
+            variablesCount: Array.isArray(a?.variables)
+              ? a.variables.length
+              : 0,
+            analysis: a,
+          };
+          const rawRecent = await AsyncStorage.getItem("statsmart:recent");
+          const recent = rawRecent ? (JSON.parse(rawRecent) as any[]) : [];
+          const next = [rec, ...recent.filter((r) => r?.id !== rec.id)].slice(
+            0,
+            3
+          );
+          await AsyncStorage.setItem("statsmart:recent", JSON.stringify(next));
+        } catch {}
+
+        // Clear pending URLs
+        await AsyncStorage.removeItem("statsmart:pendingUrls");
+
+        // Show final brand and navigate
+        setShowFinalBrand(true);
+        timeout = setTimeout(() => {
+          router.replace({
+            pathname: "/results",
+            params: { id: result.sessionId },
+          });
+        }, BRAND_TOTAL_MS);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Analysis failed";
+        setError(msg);
+        await AsyncStorage.removeItem("statsmart:pendingUrls");
+      }
+    };
+
+    processAnalysis();
+
+    // Start UI animations
+    stepTimer = setInterval(() => {
       setActiveStep((s) => (s + 1) % steps.length);
     }, 1500);
-    const progTimer = setInterval(() => {
+    progTimer = setInterval(() => {
       const elapsed = Date.now() - startedAtRef.current;
       const p = Math.min(elapsed / MIN_DISPLAY_MS, 1);
       setProgress(p);
     }, 100);
-    const t = setTimeout(() => {
-      setShowFinalBrand(true);
-      setTimeout(() => {
-        router.replace({ pathname: "/results", params: { id: sid ?? "" } });
-      }, 4000);
-    }, remaining);
+
     return () => {
-      clearTimeout(t);
+      if (timeout) clearTimeout(timeout);
       clearInterval(stepTimer);
       clearInterval(progTimer);
     };
-  }, [router, sid]);
+  }, [router]);
 
   return (
     <View style={styles.container}>
@@ -89,7 +155,18 @@ export default function ProcessingScreen() {
         />
       </View>
       <View style={{ alignItems: "center" }}>
-        {!showFinalBrand && (
+        {error ? (
+          <>
+            <Image
+              source={require("@/assets/images/icon_copy.png")}
+              style={{ width: 144, height: 144 }}
+            />
+            <Text style={styles.title}>Analysis Failed</Text>
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          </>
+        ) : !showFinalBrand ? (
           <>
             <Image
               source={require("@/assets/images/icon_copy.png")}
@@ -117,14 +194,40 @@ export default function ProcessingScreen() {
               />
             </View>
           </>
-        )}
-        {showFinalBrand && (
+        ) : (
           <>
-            <Image
-              source={require("@/assets/images/icon_copy.png")}
-              style={{ width: 260, height: 260 }}
-            />
-            <Text style={styles.brand}>StatSmart</Text>
+            <MotiView
+              from={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ type: "timing", duration: 800 }}
+            >
+              <Image
+                source={require("@/assets/images/icon_copy.png")}
+                style={{ width: 260, height: 260 }}
+              />
+            </MotiView>
+            <MotiView
+              from={{ opacity: 0, translateY: 6 }}
+              animate={{ opacity: 1, translateY: 0 }}
+              transition={{
+                type: "timing",
+                delay: BRAND_ICON_MS,
+                duration: 800,
+              }}
+            >
+              <Text style={styles.poweredBy}>Powered by</Text>
+            </MotiView>
+            <MotiView
+              from={{ opacity: 0, translateY: 8 }}
+              animate={{ opacity: 1, translateY: 0 }}
+              transition={{
+                type: "timing",
+                delay: BRAND_ICON_MS + BRAND_POWERED_MS,
+                duration: 900,
+              }}
+            >
+              <Text style={styles.brand}>StatSmart</Text>
+            </MotiView>
           </>
         )}
       </View>
@@ -170,11 +273,19 @@ const styles = StyleSheet.create({
     height: 140,
     borderRadius: 200,
   },
+  poweredBy: {
+    marginTop: 24,
+    fontSize: 18,
+    fontStyle: "italic",
+    color: "rgba(255,255,255,0.8)",
+    textAlign: "center",
+  },
   brand: {
-    marginTop: 16,
-    fontSize: 48,
+    marginTop: 8,
+    fontSize: 56,
     fontWeight: "700",
     color: "white",
+    textAlign: "center",
   },
   dot: {
     width: 10,
@@ -193,5 +304,19 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 999,
     backgroundColor: "#22d3ee",
+  },
+  errorBox: {
+    marginTop: 16,
+    backgroundColor: "rgba(239,68,68,0.15)",
+    borderColor: "rgba(239,68,68,0.35)",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    maxWidth: 300,
+  },
+  errorText: {
+    color: "#fecaca",
+    textAlign: "center",
   },
 });
