@@ -9,6 +9,7 @@ import {
   Share,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Markdown from "react-native-markdown-display";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { FeatureDialog } from "@/components/ui/feature-dialog";
 import * as Haptics from "expo-haptics";
@@ -18,7 +19,7 @@ type Variable = { name: string; type: string; role?: string };
 type ResultsData = {
   variables?: Variable[];
   recommendedTest?: string;
-  topAnalyses?: Array<{ name: string; rationale: string }>;
+  topAnalyses?: Array<{ name: string; rationale: string; flowchartSteps?: string[] }>;
   flowchartSteps?: string[];
   insights?: string[];
   quiz?: Array<{
@@ -35,10 +36,16 @@ export default function ResultsScreen() {
   const [data, setData] = useState<ResultsData | null>(null);
   const [showQuizDialog, setShowQuizDialog] = useState(false);
   const [insightsOpen, setInsightsOpen] = useState(true);
+  const [proceduresOpen, setProceduresOpen] = useState<Record<number, boolean>>({});
 
   async function copyProcedure() {
     if (!data?.flowchartSteps) return;
-    const text = data.flowchartSteps.map((s, i) => `${i + 1}. ${s}`).join("\n");
+    const text = data.flowchartSteps
+      .map((s, i) => {
+        const normalized = s.replace(/^\s*\d+\.\s+/, "");
+        return `${i + 1}. ${normalized}`;
+      })
+      .join("\n");
     try {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await Clipboard.setStringAsync(text);
@@ -129,14 +136,79 @@ export default function ResultsScreen() {
             </Pressable>
           </View>
           <Text style={styles.itemText}>{data.recommendedTest || ""}</Text>
-          {data.flowchartSteps && (
-            <View style={{ marginTop: 8 }}>
-              <Text style={styles.itemTitle}>Procedure</Text>
-              {data.flowchartSteps.map((s, i) => (
-                <Text key={i} style={styles.itemText}>
-                  • {s}
-                </Text>
-              ))}
+          
+          {data.topAnalyses && data.topAnalyses.length > 0 && (
+            <View style={{ marginTop: 16 }}>
+              <Text style={[styles.itemTitle, { marginBottom: 12 }]}>Test Procedures</Text>
+              {data.topAnalyses.slice(0, 3).map((a, i) => {
+                const hasSteps = (a.flowchartSteps && a.flowchartSteps.length > 0) || (data.flowchartSteps && data.flowchartSteps.length > 0);
+                if (!hasSteps) return null;
+                
+                return (
+                  <View key={i} style={{ marginBottom: i < 2 ? 12 : 0 }}>
+                    <Pressable
+                      onPress={async () => {
+                        try {
+                          await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        } catch {}
+                        setProceduresOpen((prev) => ({
+                          ...prev,
+                          [i]: !prev[i],
+                        }));
+                      }}
+                      style={({ pressed }) => [
+                        {
+                          flexDirection: "row",
+                          alignItems: "center",
+                          paddingVertical: 8,
+                          paddingHorizontal: 10,
+                          borderRadius: 8,
+                          backgroundColor: pressed 
+                            ? "rgba(34, 211, 238, 0.15)" 
+                            : "rgba(255, 255, 255, 0.05)",
+                          borderWidth: 1,
+                          borderColor: "rgba(255, 255, 255, 0.1)",
+                          marginBottom: proceduresOpen[i] ? 8 : 0,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.itemText, { marginRight: 6, fontSize: 14 }]}>
+                        {proceduresOpen[i] ? "▼" : "▶"}
+                      </Text>
+                      <Text style={[styles.itemTitle, { marginBottom: 0, fontSize: 14, flex: 1 }]}>
+                        {a.name} - {proceduresOpen[i] ? "Hide" : "Show"} Procedure
+                      </Text>
+                    </Pressable>
+                    {proceduresOpen[i] && (
+                      <View style={{ 
+                        marginTop: 4, 
+                        paddingTop: 8,
+                        paddingLeft: 4,
+                        borderLeftWidth: 2,
+                        borderLeftColor: "rgba(34, 211, 238, 0.3)",
+                      }}>
+                        {(a.flowchartSteps || data.flowchartSteps || []).map((s, j) => {
+                          // Strip leading number markers (1. 2. 3.) or (1) 2) 3)) or bullets
+                          let normalized = s.trimStart();
+                          normalized = normalized.replace(/^(\*\*|__)\s*\d{1,3}[.)]\s*(\*\*|__)\s*/, "");
+                          normalized = normalized.replace(/^\d{1,3}[.)]\s+/, "");
+                          normalized = normalized.replace(/^[-*+]\s+/, "");
+                          normalized = normalized.trimStart();
+                          
+                          return (
+                            <Text
+                              key={j}
+                              style={[styles.itemText, { marginBottom: 6, lineHeight: 20 }]}
+                            >
+                              {j + 1}. {normalized}
+                            </Text>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
             </View>
           )}
         </View>
@@ -174,12 +246,18 @@ export default function ResultsScreen() {
                 </Text>
               </Pressable>
             </View>
-            {insightsOpen &&
-              data.insights.map((s, i) => (
-                <Text key={i} style={styles.itemText}>
-                  • {s}
-                </Text>
-              ))}
+            {insightsOpen && (
+              <View style={{ gap: 8 }}>
+                {data.insights.map((s, i) => (
+                  <Markdown
+                    key={i}
+                    style={markdownStyles as any}
+                  >
+                    {s}
+                  </Markdown>
+                ))}
+              </View>
+            )}
           </View>
         )}
 
@@ -320,3 +398,23 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
+
+// Lightweight markdown styles for dark background
+const markdownStyles = {
+  body: {
+    color: "rgba(255,255,255,0.85)",
+  },
+  text: {
+    color: "rgba(255,255,255,0.85)",
+  },
+  paragraph: {
+    color: "rgba(255,255,255,0.85)",
+    marginBottom: 6,
+  },
+  strong: {
+    color: "white",
+  },
+  link: {
+    color: "#22d3ee",
+  },
+} as const;

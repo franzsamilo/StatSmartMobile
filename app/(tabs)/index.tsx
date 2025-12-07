@@ -1,9 +1,10 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { StyleSheet, View, Text, Pressable, Image } from "react-native";
+import { StyleSheet, View, Text, Pressable, Image, ScrollView } from "react-native";
 import React from "react";
 import { MotiView } from "moti";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -12,7 +13,8 @@ export default function HomeScreen() {
       colors={["#061428", "#0a1e3b", "#061428"]}
       style={styles.container}
     >
-      <View style={styles.center}>
+      <SafeAreaView style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.center}>
         <MotiView
           from={{ opacity: 0, translateY: 12 }}
           animate={{ opacity: 1, translateY: 0 }}
@@ -83,7 +85,8 @@ export default function HomeScreen() {
         >
           <RecentList />
         </MotiView>
-      </View>
+        </ScrollView>
+      </SafeAreaView>
     </LinearGradient>
   );
 }
@@ -98,6 +101,14 @@ function RecentList() {
       variablesCount?: number;
     }>
   >([]);
+  const dateFormatter = React.useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        dateStyle: "short",
+        timeStyle: "short",
+      }),
+    []
+  );
   React.useEffect(() => {
     (async () => {
       try {
@@ -129,10 +140,27 @@ function RecentList() {
           <Text style={{ color: "rgba(255,255,255,0.9)" }} numberOfLines={1}>
             {it.recommendedTest || "Analysis"}
           </Text>
-          <Text style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}>
-            {it.variablesCount || 0} variables •{" "}
-            {new Date(it.at).toLocaleString()}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
+            <Text
+              style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, flexShrink: 1 }}
+              numberOfLines={1}
+            >
+              {(it.variablesCount || 0) + " variables"}
+            </Text>
+            <Text
+              style={{ color: "rgba(255,255,255,0.7)", fontSize: 12 }}
+              numberOfLines={1}
+            >
+              {dateFormatter.format(new Date(it.at))}
           </Text>
+          </View>
         </Pressable>
       ))}
     </View>
@@ -146,6 +174,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,
+    paddingVertical: 24,
   },
   brandRow: {
     flexDirection: "row",
